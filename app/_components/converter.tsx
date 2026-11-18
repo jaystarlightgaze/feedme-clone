@@ -60,7 +60,12 @@ const FETCH_ERROR_COPY: Record<FetchError, { title: string; description: string 
   },
 };
 
-const PRESET_PROMPTS = ["요약해줘", "한국어로 번역해줘", "쉽게 설명해줘"];
+const PRESET_PROMPTS = [
+  "요약해줘",
+  "한국어로 번역해줘",
+  "영어로 번역해줘",
+  "쉽게 설명해줘",
+];
 const CUSTOM = "custom";
 
 type Truncation = { service: string; totalLength: number; sentLength: number };
@@ -80,13 +85,18 @@ export function Converter() {
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [preset, setPreset] = useState<string | null>(null);
+  const [presets, setPresets] = useState<string[]>([]);
   const [customPrompt, setCustomPrompt] = useState("");
   const [truncation, setTruncation] = useState<Truncation | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
   const article = status.kind === "result" ? status.article : null;
-  const prompt = preset === CUSTOM ? customPrompt.trim() : (preset ?? "");
+  // Combine selections in display order so the result does not depend on click order.
+  const prompt = [...PRESET_PROMPTS, CUSTOM]
+    .filter((value) => presets.includes(value))
+    .map((value) => (value === CUSTOM ? customPrompt.trim() : value))
+    .filter(Boolean)
+    .join("\n");
 
   async function convert() {
     const value = url.trim();
@@ -132,7 +142,7 @@ export function Converter() {
     setUrl("");
     setUrlError(null);
     setStatus({ kind: "idle" });
-    setPreset(null);
+    setPresets([]);
     setCustomPrompt("");
     setTruncation(null);
   }
@@ -259,16 +269,17 @@ export function Converter() {
         <div className="flex items-baseline gap-1.5 text-sm font-medium">
           프롬프트
           <small className="font-normal text-muted-foreground">
-            선택하면 본문 앞에 붙어요
+            여러 개 고르면 차례로 본문 앞에 붙어요
           </small>
         </div>
         <ToggleGroup
           variant="outline"
           spacing={1.5}
           className="flex-wrap"
-          value={preset ? [preset] : []}
+          multiple
+          value={presets}
           onValueChange={(values) => {
-            setPreset(values[0] ?? null);
+            setPresets(values);
             setTruncation(null);
           }}
         >
@@ -288,7 +299,7 @@ export function Converter() {
             직접 입력
           </ToggleGroupItem>
         </ToggleGroup>
-        {preset === CUSTOM ? (
+        {presets.includes(CUSTOM) ? (
           <Input
             aria-label="직접 입력한 프롬프트"
             placeholder="예: 핵심 주장 3개와 반론을 정리해줘"

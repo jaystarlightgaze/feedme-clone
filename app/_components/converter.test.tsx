@@ -73,6 +73,19 @@ test("프롬프트 없이 복사하면 본문만, 프롬프트를 고르면 프�
   expect(writeText.mock.calls[1][0]).toMatch(/^요약해줘\n\n# 제목/);
 });
 
+test("프롬프트를 여러 개 고르면 화면 순서대로 줄바꿈으로 이어 붙는다", async () => {
+  render(<Converter />);
+  await convertArticle();
+
+  fireEvent.click(button("영어로 번역해줘"));
+  fireEvent.click(button("요약해줘"));
+  fireEvent.click(button("복사하기"));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+  expect(writeText.mock.calls[0][0]).toMatch(/^요약해줘\n영어로 번역해줘\n\n# 제목/);
+  expect(button("요약해줘")).toHaveAttribute("aria-pressed", "true");
+  expect(button("영어로 번역해줘")).toHaveAttribute("aria-pressed", "true");
+});
+
 test("직접 입력 값이 복사에 쓰이고 지우기를 누르면 모두 비워진다 (기준 6, 11)", async () => {
   render(<Converter />);
   await convertArticle();
