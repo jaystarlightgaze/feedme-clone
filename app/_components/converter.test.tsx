@@ -138,3 +138,58 @@ test("가져오기 실패 시 오류 안내를 보이고 결과 카드는 숨긴
   expect(await screen.findByText("페이지를 가져오지 못했어요")).toBeInTheDocument();
   expect(screen.queryByText("아직 변환한 페이지가 없어요")).not.toBeInTheDocument();
 });
+
+test("로그인 상태에서 변환하면 저장하고 '저장한 글에 담았어요'를 보인다 (saved-articles 기준 1)", async () => {
+  const save = vi.fn().mockResolvedValue("created");
+  render(<Converter save={save} />);
+
+  await convertArticle();
+
+  expect(save).toHaveBeenCalledWith(article);
+  expect(await screen.findByText(/저장한 글에 담았어요/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "저장한 글 보기" })).toHaveAttribute("href", "/saved");
+});
+
+test("같은 글을 다시 저장하면 갱신 안내를 보인다 (saved-articles 기준 2)", async () => {
+  render(<Converter save={vi.fn().mockResolvedValue("updated")} />);
+
+  await convertArticle();
+
+  expect(await screen.findByText(/이미 저장한 글이라 최신 내용으로 바꿨어요/)).toBeInTheDocument();
+});
+
+test("변환이 실패하면 저장하지 않는다 (saved-articles 기준 3)", async () => {
+  const save = vi.fn();
+  fetchMock.mockResolvedValue(Response.json({ error: "empty" }, { status: 422 }));
+  render(<Converter save={save} />);
+
+  fireEvent.change(urlInput(), { target: { value: "https://example.com/post" } });
+  fireEvent.click(button("변환"));
+  await screen.findByText("본문을 찾지 못했어요");
+
+  expect(save).not.toHaveBeenCalled();
+});
+
+test("비로그인 상태에서는 저장하지 않고 로그인 안내를 보인다 (saved-articles 기준 4)", async () => {
+  render(<Converter />);
+
+  await convertArticle();
+
+  expect(screen.getByText(/로그인하면 변환한 글이 자동으로 저장돼요/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "로그인" })).toHaveAttribute("href", "/auth/login?next=/");
+  expect(button("복사하기")).toBeEnabled();
+});
+
+test("저장에 실패하면 결과는 그대로 두고 다시 저장할 수 있다 (saved-articles 기준 10)", async () => {
+  const save = vi.fn().mockResolvedValueOnce("failed").mockResolvedValueOnce("created");
+  render(<Converter save={save} />);
+
+  await convertArticle();
+  expect(await screen.findByText(/저장하지 못했어요/)).toBeInTheDocument();
+  expect(button("복사하기")).toBeEnabled();
+
+  fireEvent.click(button("다시 저장"));
+
+  expect(await screen.findByText(/저장한 글에 담았어요/)).toBeInTheDocument();
+  expect(save).toHaveBeenCalledTimes(2);
+});
