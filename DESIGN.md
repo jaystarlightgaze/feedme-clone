@@ -36,6 +36,7 @@ Radius and spacing: `--radius: 0.625rem`, with `--radius-sm` through `--radius-4
 Source: `components/ui/`. Update this section when it changes.
 
 - `Alert`
+- `AlertDialog`
 - `Button`
 - `Card`
 - `Empty`

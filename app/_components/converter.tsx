@@ -1,18 +1,17 @@
 "use client";
 
 import {
+  BookmarkIcon,
+  CheckIcon,
   CircleAlertIcon,
-  CopyIcon,
-  DownloadIcon,
-  ExternalLinkIcon,
   FileTextIcon,
   Loader2Icon,
-  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 
+import { ArticleActions } from "@/app/_components/article-actions";
 import { ArticleView } from "@/app/_components/article-view";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -26,14 +25,10 @@ import {
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  buildDocument,
-  buildPayload,
-  downloadFileName,
-  type Article,
-} from "@/lib/export";
-import { buildLlmLink, LLM_SERVICES, type LlmService } from "@/lib/llm-link";
+import type { Article } from "@/lib/export";
+
+export type SaveResult = "created" | "updated" | "failed";
+type SaveState = { article: Article; result: SaveResult | "saving" };
 
 type FetchError = "blocked" | "fetch" | "empty";
 type Status =
@@ -60,16 +55,6 @@ const FETCH_ERROR_COPY: Record<FetchError, { title: string; description: string 
   },
 };
 
-const PRESET_PROMPTS = [
-  "요약해줘",
-  "한국어로 번역해줘",
-  "영어로 번역해줘",
-  "쉽게 설명해줘",
-];
-const CUSTOM = "custom";
-
-type Truncation = { service: string; totalLength: number; sentLength: number };
-
 const INVALID_URL = "http:// 또는 https://로 시작하는 주소를 입력해 주세요.";
 
 function validateUrl(value: string): string | null {
@@ -81,22 +66,21 @@ function validateUrl(value: string): string | null {
   return INVALID_URL;
 }
 
-export function Converter() {
+export function Converter({
+  save,
+}: {
+  /** Present only for a signed-in user; saves the converted article. */
+  save?: (article: Article) => Promise<SaveResult>;
+}) {
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [presets, setPresets] = useState<string[]>([]);
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [truncation, setTruncation] = useState<Truncation | null>(null);
+  const [saveState, setSaveState] = useState<SaveState | null>(null);
+  // Remounts the prompt and export controls so clearing also resets the prompt.
+  const [actionsKey, setActionsKey] = useState(0);
   const inFlight = useRef<AbortController | null>(null);
 
   const article = status.kind === "result" ? status.article : null;
-  // Combine selections in display order so the result does not depend on click order.
-  const prompt = [...PRESET_PROMPTS, CUSTOM]
-    .filter((value) => presets.includes(value))
-    .map((value) => (value === CUSTOM ? customPrompt.trim() : value))
-    .filter(Boolean)
-    .join("\n");
 
   async function convert() {
     const value = url.trim();
@@ -112,7 +96,6 @@ export function Converter() {
     const controller = new AbortController();
     inFlight.current = controller;
     setStatus({ kind: "loading" });
-    setTruncation(null);
 
     try {
       const response = await fetch("/api/convert", {
@@ -124,6 +107,7 @@ export function Converter() {
       const data = await response.json();
       if (response.ok) {
         setStatus({ kind: "result", article: data.article });
+        void runSave(data.article);
       } else if (data.error === "invalid") {
         setStatus({ kind: "idle" });
         setUrlError(INVALID_URL);
@@ -137,63 +121,30 @@ export function Converter() {
     }
   }
 
+  async function runSave(target: Article) {
+    if (!save) return;
+    setSaveState({ article: target, result: "saving" });
+    let result: SaveResult = "failed";
+    try {
+      result = await save(target);
+    } catch (error) {
+      console.error(error);
+    }
+    // Ignore a late answer for an article that is no longer on screen.
+    setSaveState((current) =>
+      current?.article === target ? { article: target, result } : current,
+    );
+  }
+
   function clearAll() {
     inFlight.current?.abort();
     setUrl("");
     setUrlError(null);
     setStatus({ kind: "idle" });
-    setPresets([]);
-    setCustomPrompt("");
-    setTruncation(null);
-  }
-
-  async function copy() {
-    if (!article) return;
-    try {
-      await navigator.clipboard.writeText(buildPayload(prompt, article));
-      toast.success(prompt ? "프롬프트와 함께 복사했어요" : "복사했어요");
-    } catch {
-      toast.error("복사하지 못했어요. 브라우저 권한을 확인해 주세요.");
-    }
-  }
-
-  function download() {
-    if (!article) return;
-    const name = downloadFileName(article.title, article.domain);
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([buildDocument(article)], { type: "text/markdown;charset=utf-8" }),
-    );
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    toast.success(`${name} 파일을 받았어요`);
-  }
-
-  function openLlm(service: LlmService) {
-    if (!article) return;
-    const { label } = LLM_SERVICES[service];
-    const link = buildLlmLink(service, prompt, buildDocument(article));
-    setTruncation(
-      link.truncated
-        ? { service: label, totalLength: link.totalLength, sentLength: link.sentLength }
-        : null,
-    );
-    window.open(link.url, "_blank", "noopener,noreferrer");
-    toast.success(`${label} 새 대화를 새 탭에서 열었어요`);
+    setActionsKey((key) => key + 1);
   }
 
   const loading = status.kind === "loading";
-  const actionButtons: {
-    label: string;
-    icon: typeof CopyIcon;
-    run: () => void;
-  }[] = [
-    { label: "복사하기", icon: CopyIcon, run: copy },
-    { label: ".md 다운로드", icon: DownloadIcon, run: download },
-    { label: "ChatGPT로 열기", icon: ExternalLinkIcon, run: () => openLlm("chatgpt") },
-    { label: "Claude로 열기", icon: ExternalLinkIcon, run: () => openLlm("claude") },
-  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -265,80 +216,15 @@ export function Converter() {
         </Alert>
       ) : null}
 
-      <section className="flex flex-col gap-2.5" aria-label="프롬프트">
-        <div className="flex items-baseline gap-1.5 text-sm font-medium">
-          프롬프트
-          <small className="font-normal text-muted-foreground">
-            여러 개 고르면 차례로 본문 앞에 붙어요
-          </small>
-        </div>
-        <ToggleGroup
-          variant="outline"
-          spacing={1.5}
-          className="flex-wrap"
-          multiple
-          value={presets}
-          onValueChange={(values) => {
-            setPresets(values);
-            setTruncation(null);
-          }}
-        >
-          {PRESET_PROMPTS.map((text) => (
-            <ToggleGroupItem
-              key={text}
-              value={text}
-              className="rounded-full data-pressed:bg-primary data-pressed:text-primary-foreground"
-            >
-              {text}
-            </ToggleGroupItem>
-          ))}
-          <ToggleGroupItem
-            value={CUSTOM}
-            className="rounded-full data-pressed:bg-primary data-pressed:text-primary-foreground"
-          >
-            직접 입력
-          </ToggleGroupItem>
-        </ToggleGroup>
-        {presets.includes(CUSTOM) ? (
-          <Input
-            aria-label="직접 입력한 프롬프트"
-            placeholder="예: 핵심 주장 3개와 반론을 정리해줘"
-            value={customPrompt}
-            autoFocus
-            onChange={(event) => {
-              setCustomPrompt(event.target.value);
-              setTruncation(null);
-            }}
+      <ArticleActions key={actionsKey} article={article}>
+        {article ? (
+          <SaveNote
+            signedIn={Boolean(save)}
+            result={saveState?.article === article ? saveState.result : "saving"}
+            onRetry={() => void runSave(article)}
           />
         ) : null}
-      </section>
-
-      <section className="flex flex-col gap-2.5" aria-label="내보내기">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          {actionButtons.map(({ label, icon: Icon, run }) => (
-            <Button
-              key={label}
-              variant="outline"
-              disabled={!article}
-              onClick={run}
-            >
-              <Icon data-icon="inline-start" />
-              {label}
-            </Button>
-          ))}
-        </div>
-        {article && truncation ? (
-          <Alert role="status">
-            <TriangleAlertIcon />
-            <AlertTitle>본문이 길어 일부만 전달됐어요</AlertTitle>
-            <AlertDescription>
-              전체 {truncation.totalLength.toLocaleString()}자 중 앞부분 약{" "}
-              {truncation.sentLength.toLocaleString()}자만 {truncation.service}에
-              넘겼어요. 전체가 필요하면 복사하기로 붙여넣으세요.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-      </section>
+      </ArticleActions>
 
       {status.kind === "idle" ? (
         <Empty className="rounded-xl border">
@@ -369,5 +255,53 @@ export function Converter() {
       ) : null}
       {article ? <ArticleView article={article} /> : null}
     </div>
+  );
+}
+
+const NOTE = "flex flex-wrap items-center gap-1.5 text-sm";
+const NOTE_LINK = "text-foreground underline underline-offset-4";
+
+function SaveNote({
+  signedIn,
+  result,
+  onRetry,
+}: {
+  signedIn: boolean;
+  result: SaveResult | "saving";
+  onRetry: () => void;
+}) {
+  if (!signedIn) {
+    return (
+      <p className={`${NOTE} text-muted-foreground`}>
+        <BookmarkIcon className="size-3.5" />
+        로그인하면 변환한 글이 자동으로 저장돼요 ·
+        <Link href="/auth/login?next=/" className={NOTE_LINK}>
+          로그인
+        </Link>
+      </p>
+    );
+  }
+  if (result === "saving") return null;
+  if (result === "failed") {
+    return (
+      <p role="alert" className={`${NOTE} text-destructive`}>
+        <CircleAlertIcon className="size-3.5" />
+        저장하지 못했어요. 변환 결과는 그대로 쓸 수 있어요 ·
+        <button type="button" className="underline underline-offset-4" onClick={onRetry}>
+          다시 저장
+        </button>
+      </p>
+    );
+  }
+  return (
+    <p role="status" className={`${NOTE} text-muted-foreground`}>
+      <CheckIcon className="size-3.5" />
+      {result === "updated"
+        ? "이미 저장한 글이라 최신 내용으로 바꿨어요 ·"
+        : "저장한 글에 담았어요 ·"}
+      <Link href="/saved" className={NOTE_LINK}>
+        저장한 글 보기
+      </Link>
+    </p>
   );
 }

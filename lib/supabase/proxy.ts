@@ -38,12 +38,16 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims()
   const user = data?.claims
 
-  // Only /settings requires a signed-in user.
-  if (!user && request.nextUrl.pathname.startsWith('/settings')) {
+  // Only /settings and /saved require a signed-in user.
+  const { pathname } = request.nextUrl
+  const isProtected = ['/settings', '/saved'].some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+  if (!user && isProtected) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     url.search = ''
-    url.searchParams.set('next', request.nextUrl.pathname)
+    url.searchParams.set('next', pathname)
     return NextResponse.redirect(url)
   }
 
