@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -17,6 +18,7 @@ export function ProfileForm({
 }) {
   const [displayName, setDisplayName] = useState(initialDisplayName)
   const [isSaving, setIsSaving] = useState(false)
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,6 +36,7 @@ export function ProfileForm({
       return
     }
     toast.success('저장했습니다')
+    router.push('/')
   }
 
   return (

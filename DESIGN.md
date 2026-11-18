@@ -9,7 +9,7 @@ Source: `app/globals.css`. Update this section when that source changes.
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--background` | `oklch(1 0 0)` | `oklch(0.145 0 0)` |
+| `--background` | `oklch(0.96 0.04 150)` | `oklch(0.2 0.03 150)` |
 | `--foreground` | `oklch(0.145 0 0)` | `oklch(0.985 0 0)` |
 | `--card` | `oklch(1 0 0)` | `oklch(0.205 0 0)` |
 | `--card-foreground` | `oklch(0.145 0 0)` | `oklch(0.985 0 0)` |
