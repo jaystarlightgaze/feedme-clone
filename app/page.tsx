@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Converter } from "@/app/_components/converter";
 import { ThemeToggle } from "@/app/_components/theme-toggle";
 
@@ -11,7 +13,12 @@ export default function Home() {
           </span>
           feedme
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-3 text-sm">
+          <Link href="/settings" className="underline-offset-4 hover:underline">
+            설정
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
       <main className="flex flex-col gap-6 pb-16">
         <Converter />
